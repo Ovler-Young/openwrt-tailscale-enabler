@@ -11,6 +11,40 @@ on:
 jobs:
   check-and-build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: "386"
+          - goos: linux
+            goarch: loong64
+          - goos: linux
+            goarch: arm
+            goarm: "5"
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          # macOS
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          # Windows
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          # BSDs
+          - goos: freebsd
+            goarch: amd64
+          - goos: openbsd
+            goarch: amd64
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -33,6 +67,7 @@ jobs:
           else
             echo "::set-output name=tag_exists::false"
           fi
+
       - name: Set Version Variables
         run: |
           cd tailscale
@@ -46,6 +81,8 @@ jobs:
       - name: Set up Go
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/setup-go@v2
+        with:
+          go-version: '^1.17'
 
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
@@ -53,16 +90,14 @@ jobs:
           set -eux  # Add debugging information
           cd tailscale
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
-          # Verify mkversion script outputs
-          eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
+          eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
           ./build_dist.sh --extra-small ./cmd/tailscaled
-          # need to copy the binary to the root directory for the next steps
           cp tailscaled ../tailscale.combined
 
       - name: Create non-compressed binary
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
-          cp tailscale.combined tailscale-small-${{ steps.get_tag.outputs.latest_tag }}
+          cp tailscale.combined tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
 
       - name: Install UPX
         if: steps.check_tag.outputs.tag_exists == 'false'
@@ -72,7 +107,7 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
           upx --lzma --best ./tailscale.combined
-          mv tailscale.combined tailscale-small-upx-${{ steps.get_tag.outputs.latest_tag }}
+          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
 
       - name: Create Release
         if: steps.check_tag.outputs.tag_exists == 'false'
@@ -85,8 +120,8 @@ jobs:
           release_name: Tailscale ${{ steps.get_tag.outputs.latest_tag }}
           body: |
             This release contains two versions of the Tailscale binary:
-            - `tailscale-small-${{ steps.get_tag.outputs.latest_tag }}`: Non-compressed version
-            - `tailscale-small-upx-${{ steps.get_tag.outputs.latest_tag }}`: UPX-compressed version
+            - `tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}`: Non-compressed version
+            - `tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}`: UPX-compressed version
 
             The UPX-compressed version is smaller but may trigger false positives in some security software.
           draft: false
@@ -99,8 +134,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./tailscale-small-${{ steps.get_tag.outputs.latest_tag }}
-          asset_name: tailscale-small-${{ steps.get_tag.outputs.latest_tag }}
+          asset_path: ./tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          asset_name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
           asset_content_type: application/octet-stream
 
       - name: Upload UPX-Compressed Binary
@@ -110,6 +145,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./tailscale-small-upx-${{ steps.get_tag.outputs.latest_tag }}
-          asset_name: tailscale-small-upx-${{ steps.get_tag.outputs.latest_tag }}
+          asset_path: ./tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          asset_name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
           asset_content_type: application/octet-stream
+
