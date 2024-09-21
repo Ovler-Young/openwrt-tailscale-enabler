@@ -55,7 +55,7 @@ jobs:
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
           # Verify mkversion script outputs
           eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
-          ./build_dist.sh --extra-small dist/tailscale-${VERSION_LONG}
+          ./build_dist.sh --extra-small ./cmd/tailscaled
           mv dist/tailscale* ../tailscale.combined
 
       - name: Create non-compressed binary
