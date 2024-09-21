@@ -56,7 +56,8 @@ jobs:
           # Verify mkversion script outputs
           eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
           ./build_dist.sh --extra-small ./cmd/tailscaled
-          mv ./cmd/tailscaled/tailscale.combined ../tailscale.combined
+          # need to copy the binary to the root directory for the next steps
+          tree -a .   
 
       - name: Create non-compressed binary
         if: steps.check_tag.outputs.tag_exists == 'false'
