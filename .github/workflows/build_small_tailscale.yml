@@ -55,8 +55,8 @@ jobs:
           cp build_dist.sh build_dist.sh.bak
           # Replace '-gt 1' with '-ge 1' to fix the loop condition
           sed -i 's/-gt 1/-ge 1/' build_dist.sh
-          # Verify the change
-          if grep -q 'while \[ "$#" -ge 1 \ ]; do' build_dist.sh; then
+          # Verify the change using fixed string matching
+          if grep -F 'while [ "$#" -ge 1 ]; do' build_dist.sh; then
             echo "build_dist.sh patched successfully."
           else
             echo "Failed to patch build_dist.sh."
