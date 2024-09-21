@@ -53,10 +53,16 @@ jobs:
           cd tailscale
           # Backup the original script (optional but recommended)
           cp build_dist.sh build_dist.sh.bak
-          # Use sed to replace the loop condition
-          sed -i 's/\[ "$#" -gt 1 \]/\[ "$#" -ge 1 \]/' build_dist.sh
-          # Optionally, verify the change
-          grep 'while \[ "$#" -ge 1 \ ]; do' build_dist.sh
+          # Replace '-gt 1' with '-ge 1' to fix the loop condition
+          sed -i 's/-gt 1/-ge 1/' build_dist.sh
+          # Verify the change
+          if grep -q 'while \[ "$#" -ge 1 \ ]; do' build_dist.sh; then
+            echo "build_dist.sh patched successfully."
+          else
+            echo "Failed to patch build_dist.sh."
+            cat build_dist.sh  # Output the script for debugging
+            exit 1
+          fi
 
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
