@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
+  push:
+   paths:
+      - .github/workflows/build_small_tailscale.yml
 
 jobs:
   check-and-build:
@@ -44,8 +47,13 @@ jobs:
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
+          set -eux  # Add debugging information
           cd tailscale
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
+          # Verify mkversion script outputs
+          eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
+          echo "VERSION_LONG: $VERSION_LONG"
+          echo "VERSION_SHORT: $VERSION_SHORT"
           ./build_dist.sh --extra-small
           mv dist/tailscale* ../tailscale.combined
 
