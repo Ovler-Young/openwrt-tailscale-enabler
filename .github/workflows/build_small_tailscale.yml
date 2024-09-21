@@ -47,23 +47,6 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/setup-go@v2
 
-      - name: Patch build_dist.sh to Fix Argument Parsing
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: |
-          cd tailscale
-          # Backup the original script (optional but recommended)
-          cp build_dist.sh build_dist.sh.bak
-          # Replace '-gt 1' with '-ge 1' to fix the loop condition
-          sed -i 's/-gt 1/-ge 1/' build_dist.sh
-          # Verify the change using fixed string matching
-          if grep -F 'while [ "$#" -ge 1 ]; do' build_dist.sh; then
-            echo "build_dist.sh patched successfully."
-          else
-            echo "Failed to patch build_dist.sh."
-            cat build_dist.sh  # Output the script for debugging
-            exit 1
-          fi
-
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
@@ -72,7 +55,7 @@ jobs:
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
           # Verify mkversion script outputs
           eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
-          ./build_dist.sh --extra-small
+          ./build_dist.sh --extra-small dist/tailscale-${VERSION_LONG}
           mv dist/tailscale* ../tailscale.combined
 
       - name: Create non-compressed binary
