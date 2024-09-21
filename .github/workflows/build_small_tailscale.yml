@@ -57,7 +57,7 @@ jobs:
           eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
           ./build_dist.sh --extra-small ./cmd/tailscaled
           # need to copy the binary to the root directory for the next steps
-          tree -a .   
+          cp tailscale.combined ../tailscale.combined
 
       - name: Create non-compressed binary
         if: steps.check_tag.outputs.tag_exists == 'false'
