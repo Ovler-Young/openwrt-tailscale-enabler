@@ -46,9 +46,17 @@ jobs:
       - name: Set up Go
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/setup-go@v2
-        with:
-          go-version-file: tailscale/go.mod
-          cache: false
+
+      - name: Patch build_dist.sh to Fix Argument Parsing
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          cd tailscale
+          # Backup the original script (optional but recommended)
+          cp build_dist.sh build_dist.sh.bak
+          # Use sed to replace the loop condition
+          sed -i 's/\[ "$#" -gt 1 \]/\[ "$#" -ge 1 \]/' build_dist.sh
+          # Optionally, verify the change
+          grep 'while \[ "$#" -ge 1 \ ]; do' build_dist.sh
 
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
