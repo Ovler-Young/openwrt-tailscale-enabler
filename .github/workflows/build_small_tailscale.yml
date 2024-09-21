@@ -33,16 +33,22 @@ jobs:
           else
             echo "::set-output name=tag_exists::false"
           fi
+      - name: Set Version Variables
+        run: |
+          cd tailscale
+          VERSION_SHORT=$(git describe --tags --abbrev=0)
+          VERSION_GIT_HASH=$(git rev-parse --short HEAD)
+          VERSION_LONG="${VERSION_SHORT}-t${VERSION_GIT_HASH}"
+          echo "VERSION_SHORT=${VERSION_SHORT}"
+          echo "VERSION_GIT_HASH=${VERSION_GIT_HASH}"
+          echo "VERSION_LONG=${VERSION_LONG}"
 
       - name: Set up Go
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/setup-go@v2
         with:
-          go-version: "1.17"
-
-      - name: Install UPX
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        run: sudo apt-get update && sudo apt-get install -y upx
+          go-version-file: tailscale/go.mod
+          cache: false
 
       - name: Build smaller Tailscale binary
         if: steps.check_tag.outputs.tag_exists == 'false'
@@ -52,8 +58,6 @@ jobs:
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
           # Verify mkversion script outputs
           eval $(CGO_ENABLED=0 GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run ./cmd/mkversion)
-          echo "VERSION_LONG: $VERSION_LONG"
-          echo "VERSION_SHORT: $VERSION_SHORT"
           ./build_dist.sh --extra-small
           mv dist/tailscale* ../tailscale.combined
 
@@ -61,6 +65,10 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false'
         run: |
           cp tailscale.combined tailscale-small-${{ steps.get_tag.outputs.latest_tag }}
+
+      - name: Install UPX
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
         if: steps.check_tag.outputs.tag_exists == 'false'
