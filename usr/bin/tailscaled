@@ -30,8 +30,7 @@ if [ ! -f /tmp/tailscaled ]; then
     fi
 
     chmod +x /tmp/tailscaled
-    ln -sf /tmp/tailscaled /usr/bin/tailscale
-    ln -sf /tmp/tailscaled /usr/bin/tailscaled
+    ln -sf /tmp/tailscaled /tmp/tailscale
 
     echo "Done!"
 fi
