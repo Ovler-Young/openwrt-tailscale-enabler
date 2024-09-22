@@ -7,49 +7,60 @@ repo_url="https://github.com/${repo}"
 repo_api_url="https://api.github.com/repos/${repo}"
 
 get_latest_version() {
-    echo "getting latest version of tailscale we build.."
+    echo "Getting the latest version of Tailscale we build..." >&2
     latest_release_json=$(wget -qO- "${repo_api_url}/releases/latest")
-    # if jq is not installed, use grep instead
-    tailscale_version=$(echo "$latest_release_json" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$')
+    
+    # If jq is installed, use it for parsing
+    if command -v jq >/dev/null 2>&1; then
+        tailscale_version=$(echo "$latest_release_json" | jq -r '.tag_name' | sed 's/^v//')
+    else
+        # Fallback to grep if jq is not available
+        tailscale_version=$(echo "$latest_release_json" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | sed 's/^v//')
+    fi
 
     if [ -z "$tailscale_version" ]; then
-        echo "unable to get latest version of tailscale, exiting.."
+        echo "Unable to get the latest version of Tailscale, exiting..." >&2
         exit 1
     fi
 
-    tailscale_version=${tailscale_version#v}
-    echo "latest version of tailscale we build is: ${tailscale_version}"
+    echo "Latest version of Tailscale we build is: ${tailscale_version}" >&2
+    echo "${tailscale_version}"
 }
 
 if [ ! -f /tmp/tailscaled ]; then
-    arch=`uname -m`
-    if [ "$arch" == "mips" || "$arch" == "mips64" ]; then
-        endianness=`echo -n I | hexdump -o | awk '{ print (substr($2,6,1)=="1") ? "le" : ""; exit }'`
-    elif [ "$arch" == "armv7l" ]; then
-        arch=arm
-    elif [ "$arch" == "aarch64" ]; then
-        arch=arm64
-    elif [ "$arch" == "x86_64" ]; then
-        arch=amd64
+    arch=$(uname -m)
+    endianness=""
+    
+    if [ "$arch" = "mips" ] || [ "$arch" = "mips64" ]; then
+        endianness=$(echo -n I | hexdump -o | awk '{ print (substr($2,6,1)=="1") ? "le" : ""; exit }')
+    elif [ "$arch" = "armv7l" ]; then
+        arch="arm"
+    elif [ "$arch" = "aarch64" ]; then
+        arch="arm64"
+    elif [ "$arch" = "x86_64" ]; then
+        arch="amd64"
     fi
 
     tailscale_version=$(get_latest_version)
 
     version="tailscale-small-upx-linux-${arch}${endianness}-v${tailscale_version}"
 
-    echo "Downloading Tailscale ${version} .."
+    echo "Downloading Tailscale ${version} .." >&2
 
-    wget -O /tmp/tailscaled "${repo_url}/releases/download/v${tailscale_version}/${version}"
-    if [ $? -ne 0 ]; then
-        echo "UPX version not found, trying original version.."
+    wget -O /tmp/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
+        echo "UPX version not found, trying original version.." >&2
         version="tailscale-small-linux-${arch}-v${tailscale_version}"
-        wget -O /tmp/tailscaled "${repo_url}/v${tailscale_version}/${version}"
-    fi
+        wget -O /tmp/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
+            echo "Failed to download Tailscale. Exiting..." >&2
+            exit 1
+        }
+    }
+
 
     chmod +x /tmp/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
 
-    echo "Done!"
+    echo "Done!" >&2
 fi
 
 /tmp/tailscaled "$@"
