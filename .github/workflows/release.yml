@@ -242,9 +242,19 @@ jobs:
             Further details can be found in the repo readme.
           draft: false
           prerelease: false
+      
+      # check if the tag already exists
+      - name: Check if tag already exists
+        id: check_tag_existing
+        run: |
+          if git rev-parse ${{ steps.data.outputs.version }} >/dev/null 2>&1; then
+            echo "::set-output name=tag_exists::true"
+          else
+            echo "::set-output name=tag_exists::false"
+          fi
 
       - name: Create Release Existing
-        if: steps.check_tag.outputs.tag_exists == 'true'
+        if: steps.check_tag.outputs.tag_exists == 'true' && steps.check_tag_existing.outputs.tag_exists == 'false'
         id: create_release_existing
         uses: actions/create-release@v1
         env:
@@ -258,6 +268,7 @@ jobs:
           prerelease: true
 
       - name: Upload Release Assets
+        if: steps.check_tag_existing.outputs.tag_exists == 'false'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
