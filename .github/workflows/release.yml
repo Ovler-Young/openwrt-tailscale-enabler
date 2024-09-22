@@ -219,13 +219,27 @@ jobs:
             - macOS (amd64)
             - FreeBSD (amd64)
             - OpenBSD (amd64)
-            Windows ones have different file extensions and are not included in this release.
+            - Windows (amd64, arm64)
+            - mips (mips, mipsle, mips64, mips64le)
+
+            Some of the binaries are compressed with UPX, while the 
+            - Windows
+            - mips64
+            - mips64le
+            - loong64
+            - freebsd
+            - openbsd
+            ones are not compressed as UPX doesn't support them.
 
             The binaries are built from the latest non-pre Tailscale tag using the official build script with the extra-small flag, Refer to the [Tailscale GitHub repository](https://github.com/tailscale/tailscale)
 
             They're much smaller as I've used the techniques from the [Tailscale blog post](https://tailscale.com/kb/1207/small-tailscale) to make them smaller.
 
-            It also includes the original
+            It also includes the tar archive for easy install.
+
+            To install: `tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz`.
+
+            Further details can be found in the repo readme.
           draft: false
           prerelease: false
 
