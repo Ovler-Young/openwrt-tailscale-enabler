@@ -2,7 +2,24 @@
 
 set -e
 
-repo_url="https://github.com/Ovler-Young/openwrt-tailscale-enabler"
+repo="Ovler-Young/openwrt-tailscale-enabler"
+repo_url = "https://github.com/${repo}"
+repo_api_url = "https://api.github.com/repos/${repo}"
+
+get_latest_version() {
+    echo "getting latest version of tailscale we build.."
+    latest_release_json=$(curl -s "${repo_api_url}/releases/latest")
+    # if jq is not installed, use grep instead
+    tailscale_version=$(curl -s "${repo_api_url}/releases/latest" | grep -oP '"tag_name": "\K(.*)(?=")')
+
+    if [ -z "$tailscale_version" ]; then
+        echo "unable to get latest version of tailscale, exiting.."
+        exit 1
+    fi
+
+    tailscale_version=${tailscale_version#v}
+    echo "latest version of tailscale we build is: ${tailscale_version}"
+}
 
 if [ ! -f /tmp/tailscale ]; then
     arch=`uname -m`
@@ -16,7 +33,7 @@ if [ ! -f /tmp/tailscale ]; then
         arch=amd64
     fi
 
-    tailscale_version="1.74.1"
+    tailscale_version=$(get_latest_version)
 
     version="tailscale-small-upx-linux-${arch}${endianness}-v${tailscale_version}"
 
