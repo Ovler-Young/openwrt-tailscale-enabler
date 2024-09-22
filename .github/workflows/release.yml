@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/release.yml'
+      - '/generate-tar.sh'
+      - '/etc/'
+      - '/usr/bin/'
   pull_request:
     branches:
       - main
