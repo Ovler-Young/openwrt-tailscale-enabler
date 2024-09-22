@@ -233,8 +233,8 @@ jobs:
           release_name: Tailscale ${{ steps.data.outputs.version }}
           body: |
             Auto Update
-          draft: true
-          prerelease: false
+          draft: false
+          prerelease: true
 
       - name: Upload Release Assets
         uses: actions/github-script@v6
