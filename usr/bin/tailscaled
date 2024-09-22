@@ -8,7 +8,7 @@ repo_api_url="https://api.github.com/repos/${repo}"
 
 get_latest_version() {
     echo "getting latest version of tailscale we build.."
-    latest_release_json=$(curl -s "${repo_api_url}/releases/latest")
+    latest_release_json=$(wget -qO- "${repo_api_url}/releases/latest")
     # if jq is not installed, use grep instead
     tailscale_version=$(echo "$latest_release_json" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$')
 
