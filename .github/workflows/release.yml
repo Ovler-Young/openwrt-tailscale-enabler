@@ -1,13 +1,14 @@
-name: Releases
+name: Unified Release Workflow
 
-on: 
+on:
   push:
     branches:
       - main
   pull_request:
     branches:
       - main
-  # Allows you to run this workflow manually from the Actions tab
+  schedule:
+    - cron: "0 0 * * *" # Every day at 00:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -31,7 +32,6 @@ jobs:
           - goos: linux
             goarch: arm
             goarm: "7"
-          # mips
           - goos: linux
             goarch: mips
           - goos: linux
@@ -60,20 +60,228 @@ jobs:
       pull-requests: write
       repository-projects: write
     steps:
-    - uses: actions/checkout@v1
-    - name: Get data
-      id: data
-      run: |
-        echo "##[set-output name=version;]v$(grep tailscale_version= usr/bin/tailscaled | grep -oE '[[:digit:]]+.[[:digit:]]+.[[:digit:]]+')-$(git rev-parse --short HEAD)-autoupdate"
-        echo "##[set-output name=commit;]$(git rev-parse HEAD)"
-    - name: Generate tar archive
-      run: ./generate-tar.sh ${{ steps.data.outputs.version }}
-    - name: List
-      run: ls -alh .
-    - uses: ncipollo/release-action@v1
-      with:
-        artifacts: "openwrt-tailscale-enabler-*.tgz"
-#         bodyFile: "body.md"
-        commit: ${{ steps.data.outputs.commit }}
-        tag: ${{ steps.data.outputs.version }}
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get latest non-pre Tailscale tag
+        id: get_tag
+        run: |
+          git clone https://github.com/tailscale/tailscale.git
+          cd tailscale
+          LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
+          echo "::set-output name=latest_tag::$LATEST_TAG"
+
+      - name: Check if tag already built
+        id: check_tag
+        run: |
+          if git rev-parse ${{ steps.get_tag.outputs.latest_tag }} >/dev/null 2>&1; then
+            echo "::set-output name=tag_exists::true"
+          else
+            echo "::set-output name=tag_exists::false"
+          fi
+
+      - name: Set Version Variables
+        run: |
+          cd tailscale
+          VERSION_SHORT=$(git describe --tags --abbrev=0)
+          VERSION_GIT_HASH=$(git rev-parse --short HEAD)
+          VERSION_LONG="${VERSION_SHORT}-t${VERSION_GIT_HASH}"
+          echo "VERSION_SHORT=${VERSION_SHORT}"
+          echo "VERSION_GIT_HASH=${VERSION_GIT_HASH}"
+          echo "VERSION_LONG=${VERSION_LONG}"
+
+      - name: Set up Go environment variables
+        run: |
+          echo "GOOS=${{ matrix.goos }}" >> $GITHUB_ENV
+          echo "GOARCH=${{ matrix.goarch }}" >> $GITHUB_ENV
+          if [ -n "${{ matrix.goarm }}" ]; then
+            echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set up Go
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/setup-go@v2
+        with:
+          go-version: "^1.17"
+
+      - name: Build smaller Tailscale binary
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          set -eux  # Add debugging information
+          cd tailscale
+          git checkout ${{ steps.get_tag.outputs.latest_tag }}
+          eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
+          go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
+          cp tailscale.combined ../tailscale.combined
+
+      - name: Create non-compressed binary
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          cp tailscale.combined tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+
+      - name: Install UPX
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: sudo apt-get update && sudo apt-get install -y upx
+
+      - name: Compress with UPX
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          upx --lzma --best ./tailscale.combined
+          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+        continue-on-error: true
+
+      - name: Check UPX Compression
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        id: check_upx
+        run: |
+          if [ -f tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }} ]; then
+            echo "UPX_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "UPX_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Upload Artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/upload-artifact@v3
+        with:
+          name: tailscale-binaries
+          path: |
+            tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+            ${{ env.UPX_EXISTS == 'true' && format('tailscale-small-upx-{0}-{1}-{2}', matrix.goos, matrix.goarch, steps.get_tag.outputs.latest_tag) || '' }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get latest non-pre Tailscale tag
+        id: get_tag
+        run: |
+          git clone https://github.com/tailscale/tailscale.git
+          cd tailscale
+          LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
+          echo "::set-output name=latest_tag::$LATEST_TAG"
+      - name: Get data
+        id: data
+        run: |
+          echo "##[set-output name=version;]${{ steps.get_tag.outputs.latest_tag }}-$(git rev-parse --short HEAD)-autoupdate"
+          echo "##[set-output name=commit;]$(git rev-parse HEAD)"
+      - name: Generate tar archive
+        run: ./generate-tar.sh ${{ steps.data.outputs.version }}
+
+      - name: Check if tag already built
+        id: check_tag
+        run: |
+          if git rev-parse ${{ steps.get_tag.outputs.latest_tag }} >/dev/null 2>&1; then
+            echo "::set-output name=tag_exists::true"
+          else
+            echo "::set-output name=tag_exists::false"
+          fi
+
+      - name: Download Artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/download-artifact@v3
+        with:
+          name: tailscale-binaries
+          path: ./binaries
+        continue-on-error: true
+
+      - name: Create Release New
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_tag.outputs.latest_tag }}
+          release_name: Tailscale ${{ steps.get_tag.outputs.latest_tag }}
+          body: |
+            This release contains two versions of the Tailscale binary for each platform:
+            - Non-compressed version
+            - UPX-compressed version
+            The UPX-compressed version is smaller but may trigger false positives in some security software.
+
+            And, build for all the following platforms:
+            - Linux (amd64, arm64, 386, loong64, arm5, arm7)
+            - macOS (amd64)
+            - FreeBSD (amd64)
+            - OpenBSD (amd64)
+            Windows ones have different file extensions and are not included in this release.
+
+            The binaries are built from the latest non-pre Tailscale tag using the official build script with the extra-small flag, Refer to the [Tailscale GitHub repository](https://github.com/tailscale/tailscale)
+
+            They're much smaller as I've used the techniques from the [Tailscale blog post](https://tailscale.com/kb/1207/small-tailscale) to make them smaller.
+
+            It also includes the original
+          draft: false
+          prerelease: false
+
+      - name: Create Release Existing
+        if: steps.check_tag.outputs.tag_exists == 'true'
+        id: create_release_existing
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.data.outputs.version }}
+          release_name: Tailscale ${{ steps.data.outputs.version }}
+          body: |
+            Auto Update
+          draft: true
+          prerelease: false
+
+      - name: Upload Release Assets
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs').promises;
+            const path = require('path');
+
+            const uploadAsset = async (releaseId, file) => {
+              console.log(`Uploading ${file}...`);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseId,
+                name: path.basename(file),
+                data: await fs.readFile(file)
+              });
+            };
+            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
+
+            const enablerPath = './openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz';
+            await uploadAsset(releaseId, enablerPath);
+
+      - name: Upload Release Assets
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs').promises;
+            const path = require('path');
+
+            const uploadAsset = async (releaseId, file) => {
+              console.log(`Uploading ${file}...`);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseId,
+                name: path.basename(file),
+                data: await fs.readFile(file)
+              });
+            };
+
+            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
+            let files = await fs.readdir('./binaries');
+
+            for (const file of files) {
+              await uploadAsset(releaseId, path.join('./binaries', file));
+            }
