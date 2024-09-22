@@ -13,6 +13,52 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: "386"
+          - goos: linux
+            goarch: loong64
+          - goos: linux
+            goarch: arm
+            goarm: "5"
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          # mips
+          - goos: linux
+            goarch: mips
+          - goos: linux
+            goarch: mipsle
+          - goos: linux
+            goarch: mips64
+          - goos: linux
+            goarch: mips64le
+          # macOS
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          # Windows
+          # - goos: windows
+          #   goarch: amd64
+          # - goos: windows
+          #   goarch: arm64
+          # BSDs
+          - goos: freebsd
+            goarch: amd64
+          - goos: openbsd
+            goarch: amd64
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     steps:
     - uses: actions/checkout@v1
     - name: Get data
