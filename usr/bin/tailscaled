@@ -10,7 +10,7 @@ get_latest_version() {
     echo "getting latest version of tailscale we build.."
     latest_release_json=$(curl -s "${repo_api_url}/releases/latest")
     # if jq is not installed, use grep instead
-    tailscale_version=$(curl -s "${repo_api_url}/releases/latest" | grep -oP '"tag_name": "\K(.*)(?=")')
+    tailscale_version=$(echo "$latest_release_json" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$')
 
     if [ -z "$tailscale_version" ]; then
         echo "unable to get latest version of tailscale, exiting.."
