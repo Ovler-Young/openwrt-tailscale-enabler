@@ -3,8 +3,8 @@
 set -e
 
 repo="Ovler-Young/openwrt-tailscale-enabler"
-repo_url = "https://github.com/${repo}"
-repo_api_url = "https://api.github.com/repos/${repo}"
+repo_url="https://github.com/${repo}"
+repo_api_url="https://api.github.com/repos/${repo}"
 
 get_latest_version() {
     echo "getting latest version of tailscale we build.."
