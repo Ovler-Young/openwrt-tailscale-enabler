@@ -46,10 +46,10 @@ jobs:
           - goos: darwin
             goarch: arm64
           # Windows
-          # - goos: windows
-          #   goarch: amd64
-          # - goos: windows
-          #   goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
           # BSDs
           - goos: freebsd
             goarch: amd64
@@ -107,7 +107,7 @@ jobs:
           go-version: "^1.17"
 
       - name: Build smaller Tailscale binary
-        if: steps.check_tag.outputs.tag_exists == 'false'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         run: |
           set -eux  # Add debugging information
           cd tailscale
@@ -115,18 +115,25 @@ jobs:
           eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
           go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
           cp tailscale.combined ../tailscale.combined
-
-      - name: Create non-compressed binary
-        if: steps.check_tag.outputs.tag_exists == 'false'
+          cp tailscale.combined ../tailscale.combined-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+      
+      - name: Build smaller Tailscale binary for Windows
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
         run: |
-          cp tailscale.combined tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          set -eux  # Add debugging information
+          cd tailscale
+          git checkout ${{ steps.get_tag.outputs.latest_tag }}
+          eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
+          go build -o tailscale.combined.exe -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
+          cp tailscale.combined.exe ../tailscale.combined.exe
+          cp tailscale.combined.exe ../tailscale.combined-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
 
       - name: Install UPX
-        if: steps.check_tag.outputs.tag_exists == 'false'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: steps.check_tag.outputs.tag_exists == 'false'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         run: |
           upx --lzma --best ./tailscale.combined
           mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
