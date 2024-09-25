@@ -27,7 +27,7 @@ get_latest_version() {
     echo "${tailscale_version}"
 }
 
-if [ ! -f /tmp/tailscale ]; then
+download_tailscale() {
     arch=$(uname -m)
     endianness=""
     
@@ -58,8 +58,19 @@ if [ ! -f /tmp/tailscale ]; then
 
     chmod +x /tmp/tailscale
     ln -sf /tmp/tailscale /tmp/tailscaled  # Corrected the symlink target
+    chmod +x /tmp/tailscaled
 
     echo "Done!" >&2
+}
+
+if [ ! -f /tmp/tailscale ]; then
+    download_tailscale
 fi
 
-/tmp/tailscale "$@"
+if ! /tmp/tailscale "$@"; then
+    echo "Permission denied. Removing /tmp/tailscale and retrying..." >&2
+    rm /tmp/tailscale
+    download_tailscale
+    /tmp/tailscale "$@"
+fi
+

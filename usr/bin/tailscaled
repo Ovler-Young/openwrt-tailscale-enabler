@@ -27,7 +27,7 @@ get_latest_version() {
     echo "${tailscale_version}"
 }
 
-if [ ! -f /tmp/tailscaled ]; then
+download_tailscaled() {
     arch=$(uname -m)
     endianness=""
     
@@ -59,8 +59,19 @@ if [ ! -f /tmp/tailscaled ]; then
 
     chmod +x /tmp/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
+    chmod +x /tmp/tailscale
 
     echo "Done!" >&2
+}
+
+if [ ! -f /tmp/tailscaled ]; then
+    download_tailscaled
 fi
 
-/tmp/tailscaled "$@"
+if ! /tmp/tailscaled "$@"; then
+    echo "Permission denied. Removing /tmp/tailscaled and retrying..." >&2
+    rm /tmp/tailscaled
+    download_tailscaled
+    /tmp/tailscaled "$@"
+fi
+
