@@ -47,31 +47,19 @@ download_tailscaled() {
 
     echo "Downloading Tailscale ${version} .." >&2
 
-    wget -O /tmp/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
+    wget -O /usr/bin/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
         echo "UPX version not found, trying original version.." >&2
         version="tailscale-small-linux-${arch}-v${tailscale_version}"
-        wget -O /tmp/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
+        wget -O /usr/bin/tailscale "${repo_url}/releases/download/v${tailscale_version}/${version}" || {
             echo "Failed to download Tailscale. Exiting..." >&2
             exit 1
         }
     }
 
 
-    chmod +x /tmp/tailscaled
-    ln -sf /tmp/tailscaled /tmp/tailscale
-    chmod +x /tmp/tailscale
+    chmod +x /usr/bin/tailscaled
+    ln -sf /usr/bin/tailscaled /usr/bin/tailscale
+    chmod +x /usr/bin/tailscale
 
     echo "Done!" >&2
 }
-
-if [ ! -f /tmp/tailscaled ]; then
-    download_tailscaled
-fi
-
-if ! /tmp/tailscaled "$@"; then
-    echo "Permission denied. Removing /tmp/tailscaled and retrying..." >&2
-    rm /tmp/tailscaled
-    download_tailscaled
-    /tmp/tailscaled "$@"
-fi
-

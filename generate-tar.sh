@@ -9,3 +9,6 @@ filename="openwrt-tailscale-enabler-$1.tgz"
 
 # Falls back to busybox tar syntax if running on openwrt busybox tar rather than GNU tar
 tar -czvf $filename usr/ etc/ || tar c -zvf $filename usr/ etc/
+
+
+# 打包一份带有文件而不是软链接的tar包
