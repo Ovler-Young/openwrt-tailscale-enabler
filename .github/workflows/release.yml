@@ -266,7 +266,7 @@ jobs:
           fi
 
       - name: Create Release Existing
-        if: steps.check_tag.outputs.tag_exists == 'true' && steps.check_tag_existing.outputs.tag_exists == 'false'
+        if: steps.check_tag.outputs.tag_exists == 'true'
         id: create_release_existing
         uses: actions/create-release@v1
         env:
