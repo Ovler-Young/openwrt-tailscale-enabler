@@ -262,7 +262,7 @@ jobs:
             In a pasteable format, the commands are:
 
             ```
-            wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+            wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             /usr/bin/installtailscale
 
