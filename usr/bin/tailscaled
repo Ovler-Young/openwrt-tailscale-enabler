@@ -63,3 +63,7 @@ download_tailscaled() {
 
     echo "Done!" >&2
 }
+
+download_tailscaled
+
+exec /usr/bin/tailscaled "$@"

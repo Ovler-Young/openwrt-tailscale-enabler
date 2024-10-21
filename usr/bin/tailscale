@@ -62,3 +62,7 @@ download_tailscale() {
 
     echo "Done!" >&2
 }
+
+download_tailscale
+
+exec /usr/bin/tailscale "$@"
