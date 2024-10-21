@@ -59,6 +59,11 @@ download_tailscale() {
     chmod +x /usr/bin/tailscale
     ln -sf /usr/bin/tailscale /usr/bin/tailscaled  # Corrected the symlink target
     chmod +x /usr/bin/tailscaled
+    echo "/usr/bin/tailscaled is now a symlink to /usr/bin/tailscale!" >&2
+    
+    # echo total space used by tailscale
+    space_used=$(du -h /usr/bin/tailscale | awk '{print $1}')
+    echo "Tailscale is now installed/updated! Space used: ${space_used}" >&2
 
     echo "Done!" >&2
 }
