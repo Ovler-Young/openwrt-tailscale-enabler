@@ -255,7 +255,7 @@ jobs:
 
             To install: `tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz`.
 
-            Then run `installtailscale`.
+            Then run `tailscale-enabler`.
 
             If you want, you can also set cron jobs to update the Tailscale binary automatically.
 
@@ -264,10 +264,10 @@ jobs:
             ```
             wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
-            /usr/bin/installtailscale
+            /usr/bin/tailscale-enabler
 
             # to Auto Update Tailscale binary every Sunday at 00:00
-            { crontab -l; echo "0 0 * * 0 /usr/bin/installtailscale"; } | crontab - 
+            { crontab -l; echo "0 0 * * 0 /usr/bin/tailscale-enabler"; } | crontab - 
             ```
 
             Further details can be found in the repo readme.
