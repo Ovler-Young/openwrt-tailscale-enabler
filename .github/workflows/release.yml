@@ -6,9 +6,9 @@ on:
       - main
     paths:
       - '.github/workflows/release.yml'
-      - '/generate-tar.sh'
-      - '/etc/*'
-      - '/usr/bin/*'
+      - 'generate-tar.sh'
+      - 'etc/*'
+      - 'usr/bin/tailscale-enabler'
   pull_request:
     branches:
       - main
