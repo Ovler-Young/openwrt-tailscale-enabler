@@ -7,8 +7,8 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - '/generate-tar.sh'
-      - '/etc/'
-      - '/usr/bin/'
+      - '/etc/*'
+      - '/usr/bin/*'
   pull_request:
     branches:
       - main
@@ -175,6 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
+        id: checkout_code
         uses: actions/checkout@v2
         with:
           fetch-depth: 0
@@ -191,6 +192,9 @@ jobs:
         run: |
           echo "##[set-output name=version;]${{ steps.get_tag.outputs.latest_tag }}-$(git rev-parse --short HEAD)-autoupdate"
           echo "##[set-output name=commit;]$(git rev-parse HEAD)"
+          # also get repo link
+          echo "##[set-output name=repolink;]$(git remote get-url origin | sed 's/\.git//g')"
+
       - name: Generate tar archive
         run: ./generate-tar.sh ${{ steps.data.outputs.version }}
 
@@ -250,6 +254,21 @@ jobs:
             It also includes the tar archive for easy install.
 
             To install: `tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz`.
+
+            Then run `installtailscale`.
+
+            If you want, you can also set cron jobs to update the Tailscale binary automatically.
+
+            In a pasteable format, the commands are:
+
+            ```
+            wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.data.outputs.repolink }}/releases/download/${{ steps.data.outputs.version }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}-t${{ steps.data.outputs.commit }}-autoupdate.tgz
+            tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}-t${{ steps.data.outputs.commit }}-autoupdate.tgz
+            /usr/bin/installtailscale
+
+            # to Auto Update Tailscale binary every Sunday at 00:00
+            { crontab -l; echo "0 0 * * 0 /usr/bin/installtailscale"; } | crontab - 
+            ```
 
             Further details can be found in the repo readme.
           draft: false
