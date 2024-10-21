@@ -299,7 +299,6 @@ jobs:
           prerelease: true
 
       - name: Upload Release Assets
-        if: steps.check_tag_existing.outputs.tag_exists == 'false'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
