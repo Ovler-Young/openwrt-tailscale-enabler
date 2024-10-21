@@ -264,6 +264,7 @@ jobs:
             ```
             wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+            rm openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             /usr/bin/tailscale-enabler
 
             # to Auto Update Tailscale binary every Sunday at 00:00
