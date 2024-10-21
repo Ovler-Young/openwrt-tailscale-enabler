@@ -64,5 +64,3 @@ download_tailscale() {
 }
 
 download_tailscale
-
-exec /usr/bin/tailscale "$@"

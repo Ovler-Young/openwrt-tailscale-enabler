@@ -65,5 +65,3 @@ download_tailscaled() {
 }
 
 download_tailscaled
-
-exec /usr/bin/tailscaled "$@"
