@@ -68,4 +68,19 @@ download_tailscale() {
     echo "Done!" >&2
 }
 
-download_tailscale
+# Check if tailscale exists and get the current version
+if ! command -v tailscale >/dev/null 2>&1; then
+    echo "Tailscale not found. Installing..." >&2
+    download_tailscale
+else
+    current_version=$(tailscale version | head -n 1 | awk '{print $2}' | sed 's/-dev.*//')
+    latest_version=$(get_latest_version)
+    echo "Current Tailscale version: ${current_version}"
+    
+    if [ "$(printf '%s\n' "$latest_version" "$current_version" | sort -V | head -n1)" != "$latest_version" ]; then
+        echo "New version available. Updating..." >&2
+        download_tailscale
+    else
+        echo "Tailscale is up-to-date." >&2
+    fi
+fi
