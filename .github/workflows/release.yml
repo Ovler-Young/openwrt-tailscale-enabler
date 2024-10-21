@@ -5,10 +5,10 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/release.yml'
-      - 'generate-tar.sh'
-      - 'etc/*'
-      - 'usr/bin/tailscale-enabler'
+      - ".github/workflows/release.yml"
+      - "generate-tar.sh"
+      - "etc/*"
+      - "usr/bin/tailscale-enabler"
   pull_request:
     branches:
       - main
@@ -121,7 +121,7 @@ jobs:
           go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
           cp tailscale.combined ../tailscale.combined
           cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
-      
+
       - name: Build smaller Tailscale binary for Windows
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
         run: |
@@ -262,10 +262,26 @@ jobs:
             In a pasteable format, the commands are:
 
             ```
+            # Download the enabler script
             wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
             rm openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+
+            # Download the latest Tailscale binary
             /usr/bin/tailscale-enabler
+
+            # Install the required packages
+            opkg update
+            opkg install libustream-openssl ca-bundle kmod-tun
+
+            # Start the Tailscale service
+            /etc/init.d/tailscale start
+
+            # Start the Tailscale client. You may need to authenticate it using the provided link.
+            tailscale up --accept-dns=false
+
+            # Enable Tailscale to start on boot
+            /etc/init.d/tailscale enable
 
             # to Auto Update Tailscale binary every Sunday at 00:00
             { crontab -l; echo "0 0 * * 0 /usr/bin/tailscale-enabler"; } | crontab - 
@@ -274,7 +290,7 @@ jobs:
             Further details can be found in the repo readme.
           draft: false
           prerelease: false
-      
+
       # check if the tag already exists
       - name: Check if tag already exists
         id: check_tag_existing
