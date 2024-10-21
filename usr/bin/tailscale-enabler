@@ -73,7 +73,7 @@ if ! command -v tailscale >/dev/null 2>&1; then
     echo "Tailscale not found. Installing..." >&2
     download_tailscale
 else
-    current_version=$(tailscale version | head -n 1 | awk '{print $2}' | sed 's/-dev.*//')
+    current_version=$(tailscale version | head -n 1 | sed 's/-dev.*//')
     latest_version=$(get_latest_version)
     echo "Current Tailscale version: ${current_version}"
     
