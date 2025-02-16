@@ -214,9 +214,8 @@ jobs:
 
       - name: Download Artifacts
         if: steps.check_tag.outputs.tag_exists == 'false'
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: tailscale-binaries
           path: ./binaries
         continue-on-error: true
 
