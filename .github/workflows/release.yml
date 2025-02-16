@@ -133,11 +133,11 @@ jobs:
           cp tailscale.combined.exe ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
       - name: Install UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
         run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
         run: |
           upx --lzma --best ./tailscale.combined
           mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
@@ -157,16 +157,22 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-binaries
+          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
           path: |
             tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+      - name: Upload Artifacts
+        if: env.UPX_EXISTS == 'true' && steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: |
             ${{ env.UPX_EXISTS == 'true' && format('tailscale-small-upx-{0}-{1}-{2}', matrix.goos, matrix.goarch, steps.get_tag.outputs.latest_tag) || '' }}
 
       - name: Upload Artifacts for Windows
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-binaries
+          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
           path: |
             tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
