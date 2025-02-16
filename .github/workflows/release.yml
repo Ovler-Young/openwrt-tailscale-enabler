@@ -219,15 +219,64 @@ jobs:
           path: ./binaries
         continue-on-error: true
 
-      - name: Create Release New
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        id: create_release
+      # check if the tag already exists
+      - name: Check if tag already exists
+        id: check_tag_existing
+        run: |
+          if git rev-parse ${{ steps.data.outputs.version }} >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release Existing
+        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
+        id: create_release_existing
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.get_tag.outputs.latest_tag }}
-          release_name: Tailscale ${{ steps.get_tag.outputs.latest_tag }}
+          tag_name: ${{ steps.data.outputs.version }}
+          release_name: Tailscale ${{ steps.data.outputs.version }}
+          body: |
+            Auto Update
+          draft: false
+          prerelease: true
+
+      - name: Upload Release Assets
+        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs').promises;
+            const path = require('path');
+
+            const uploadAsset = async (releaseId, file) => {
+              console.log(`Uploading ${file}...`);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseId,
+                name: path.basename(file),
+                data: await fs.readFile(file)
+              });
+            };
+            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
+
+            const enablerPath = './openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz';
+            await uploadAsset(releaseId, enablerPath);
+
+      - name: Upload Release Assets
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            "./binaries/*/*"
+            openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+          allowUpdates: "true"
+          tag: ${{ steps.get_tag.outputs.latest_tag }}
+          makeLatest: "true"
           body: |
             This release contains two versions of the Tailscale binary for each platform:
             - Non-compressed version
@@ -292,61 +341,3 @@ jobs:
             ```
 
             Further details can be found in the repo readme.
-          draft: false
-          prerelease: false
-
-      # check if the tag already exists
-      - name: Check if tag already exists
-        id: check_tag_existing
-        run: |
-          if git rev-parse ${{ steps.data.outputs.version }} >/dev/null 2>&1; then
-            echo "tag_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "tag_exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create Release Existing
-        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
-        id: create_release_existing
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.data.outputs.version }}
-          release_name: Tailscale ${{ steps.data.outputs.version }}
-          body: |
-            Auto Update
-          draft: false
-          prerelease: true
-
-      - name: Upload Release Assets
-        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            const fs = require('fs').promises;
-            const path = require('path');
-
-            const uploadAsset = async (releaseId, file) => {
-              console.log(`Uploading ${file}...`);
-              await github.rest.repos.uploadReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: releaseId,
-                name: path.basename(file),
-                data: await fs.readFile(file)
-              });
-            };
-            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
-
-            const enablerPath = './openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz';
-            await uploadAsset(releaseId, enablerPath);
-
-      - name: Upload Release Assets
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: "./binaries/*/*"
-          allowUpdates: "true"
-          tag: ${{ steps.get_tag.outputs.latest_tag }}
