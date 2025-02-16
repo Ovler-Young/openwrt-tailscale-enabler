@@ -348,5 +348,6 @@ jobs:
         uses: ncipollo/release-action@v1
         env:
           allowUpdates: "true"
+          tag: ${{ steps.data.outputs.version }}
         with:
           artifacts: "binaries/*"
