@@ -272,7 +272,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: |
-            "./binaries/*/*"
+            ./binaries/*/*
             openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
           allowUpdates: "true"
           tag: ${{ steps.get_tag.outputs.latest_tag }}
