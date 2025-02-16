@@ -164,9 +164,9 @@ jobs:
         if: env.UPX_EXISTS == 'true' && steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
+          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
           path: |
-            ${{ env.UPX_EXISTS == 'true' && format('tailscale-small-upx-{0}-{1}-{2}', matrix.goos, matrix.goarch, steps.get_tag.outputs.latest_tag) || '' }}
+            ${{ env.UPX_EXISTS == 'true' && format('tailscale-small-upx-{0}-{1}-{2}.exe', matrix.goos, matrix.goarch, steps.get_tag.outputs.latest_tag) || '' }}
 
       - name: Upload Artifacts for Windows
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
@@ -346,8 +346,7 @@ jobs:
       - name: Upload Release Assets
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: ncipollo/release-action@v1
-        env:
-          allowUpdates: "true"
         with:
           artifacts: "./binaries/*/*"
+          allowUpdates: "true"
           tag: ${{ steps.get_tag.outputs.latest_tag }}
