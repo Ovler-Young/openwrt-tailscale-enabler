@@ -345,27 +345,8 @@ jobs:
 
       - name: Upload Release Assets
         if: steps.check_tag.outputs.tag_exists == 'false'
-        uses: actions/github-script@v6
+        uses: ncipollo/release-action@v1
+        env:
+          allowUpdates: "true"
         with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            const fs = require('fs').promises;
-            const path = require('path');
-
-            const uploadAsset = async (releaseId, file) => {
-              console.log(`Uploading ${file}...`);
-              await github.rest.repos.uploadReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: releaseId,
-                name: path.basename(file),
-                data: await fs.readFile(file)
-              });
-            };
-
-            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
-            let files = await fs.readdir('./binaries');
-
-            for (const file of files) {
-              await uploadAsset(releaseId, path.join('./binaries', file));
-            }
+          artifacts: "binaries/*"
