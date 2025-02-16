@@ -120,7 +120,7 @@ jobs:
           eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
           go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
           cp tailscale.combined ../tailscale.combined
-          cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
 
       - name: Build smaller Tailscale binary for Windows
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
@@ -140,14 +140,14 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
         run: |
           upx --lzma --best ./tailscale.combined
-          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
         continue-on-error: true
 
       - name: Check UPX Compression
         if: steps.check_tag.outputs.tag_exists == 'false'
         id: check_upx
         run: |
-          if [ -f tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }} ]; then
+          if [ -f tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }} ]; then
             echo "UPX_EXISTS=true" >> $GITHUB_ENV
           else
             echo "UPX_EXISTS=false" >> $GITHUB_ENV
@@ -349,5 +349,5 @@ jobs:
         env:
           allowUpdates: "true"
         with:
-          artifacts: "binaries/*"
-          tag: ${{ steps.data.outputs.version }}
+          artifacts: "./binaries/*/*"
+          tag: ${{ steps.get_tag.outputs.latest_tag }}
