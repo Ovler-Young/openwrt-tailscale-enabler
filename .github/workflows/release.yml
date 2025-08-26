@@ -120,7 +120,12 @@ jobs:
           eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
           go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
           cp tailscale.combined ../tailscale.combined
-          cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
+          # Create the correct filename with goarm suffix if applicable
+          if [ -n "${{ matrix.goarm }}" ]; then
+            cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}
+          else
+            cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          fi
 
       - name: Build smaller Tailscale binary for Windows
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
@@ -133,48 +138,59 @@ jobs:
           cp tailscale.combined.exe ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
       - name: Install UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux' && matrix.goarch != 'loong64' && matrix.goarch != 'mips64' && matrix.goarch != 'mips64le'
         run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux' && matrix.goarch != 'loong64' && matrix.goarch != 'mips64' && matrix.goarch != 'mips64le'
         run: |
-          upx --lzma --best ./tailscale.combined
-          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
+          cp tailscale.combined tailscale.upx
+          upx --lzma --best ./tailscale.upx
+          # Create the correct filename with goarm suffix if applicable
+          if [ -n "${{ matrix.goarm }}" ]; then
+            mv tailscale.upx tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}
+          else
+            mv tailscale.upx tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          fi
         continue-on-error: true
 
       - name: Check UPX Compression
         if: steps.check_tag.outputs.tag_exists == 'false'
         id: check_upx
         run: |
-          if [ -f tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }} ]; then
+          if [ -n "${{ matrix.goarm }}" ]; then
+            UPX_FILE="tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}"
+          else
+            UPX_FILE="tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}"
+          fi
+          
+          if [ -f "$UPX_FILE" ]; then
             echo "UPX_EXISTS=true" >> $GITHUB_ENV
+            echo "UPX_FILE=$UPX_FILE" >> $GITHUB_ENV
           else
             echo "UPX_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Upload Artifacts
+      - name: Upload Non-Windows Artifacts
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{contains(matrix.goarch, 'arm') && format('-{0}', matrix.goarm) || ''}}-${{ steps.get_tag.outputs.latest_tag }}
-          path: |
-            tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
-      - name: Upload Artifacts
-        if: env.UPX_EXISTS == 'true' && steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
+          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+
+      - name: Upload UPX Artifacts
+        if: env.UPX_EXISTS == 'true' && steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
-          path: |
-            ${{ env.UPX_EXISTS == 'true' && format('tailscale-small-upx-{0}-{1}-{2}.exe', matrix.goos, matrix.goarch, steps.get_tag.outputs.latest_tag) || '' }}
+          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: ${{ env.UPX_FILE }}
 
-      - name: Upload Artifacts for Windows
+      - name: Upload Windows Artifacts
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
-          path: |
-            tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
+          path: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
   release:
     needs: build
