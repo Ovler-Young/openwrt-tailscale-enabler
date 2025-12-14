@@ -9,36 +9,7 @@ on:
       - .github/workflows/build_small_tailscale.yml
 
 jobs:
-  check-tag:
-    runs-on: ubuntu-latest
-    outputs:
-      latest_tag: ${{ steps.get_tag.outputs.latest_tag }}
-      tag_exists: ${{ steps.check_tag.outputs.tag_exists }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get latest non-pre Tailscale tag
-        id: get_tag
-        run: |
-          git clone --bare https://github.com/tailscale/tailscale.git ts-bare
-          LATEST_TAG=$(git -C ts-bare tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
-      - name: Check if tag already built
-        id: check_tag
-        run: |
-          if git rev-parse ${{ steps.get_tag.outputs.latest_tag }} >/dev/null 2>&1; then
-            echo "tag_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "tag_exists=false" >> $GITHUB_OUTPUT
-          fi
-
-  build:
-    needs: check-tag
-    if: needs.check-tag.outputs.tag_exists == 'false'
+  check-and-build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -71,57 +42,118 @@ jobs:
             goarch: amd64
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest non-pre Tailscale tag
+        id: get_tag
+        run: |
+          git clone https://github.com/tailscale/tailscale.git
+          cd tailscale
+          LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already built
+        id: check_tag
+        run: |
+          if git rev-parse ${{ steps.get_tag.outputs.latest_tag }} >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Go
+        if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/setup-go@v5
         with:
-          go-version: "^1.22"
+          go-version: '^1.22'
 
-      - name: Clone and build Tailscale
+      - name: Build smaller Tailscale binary
+        if: steps.check_tag.outputs.tag_exists == 'false'
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
-          TAG: ${{ needs.check-tag.outputs.latest_tag }}
         run: |
-          git clone --depth 1 --branch $TAG https://github.com/tailscale/tailscale.git
+          set -eux
           cd tailscale
+          git checkout ${{ steps.get_tag.outputs.latest_tag }}
+          # Run mkversion without cross-compile env, then build with it
           eval $(CGO_ENABLED=0 go run ./cmd/mkversion)
-          ./build_dist.sh --extra-small ./cmd/tailscaled
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} ./build_dist.sh --extra-small ./cmd/tailscaled
           EXT=""
-          [[ "$GOOS" == "windows" ]] && EXT=".exe"
-          mv tailscaled ../tailscale-small-${GOOS}-${GOARCH}${GOARM:+-v$GOARM}${EXT}
+          [[ "${{ matrix.goos }}" == "windows" ]] && EXT=".exe"
+          cp tailscaled${EXT} ../tailscale.combined${EXT}
+
+      - name: Create non-compressed binary
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          EXT=""
+          [[ "${{ matrix.goos }}" == "windows" ]] && EXT=".exe"
+          SUFFIX="${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
+          cp tailscale.combined${EXT} tailscale-small-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}${EXT}
+
+      - name: Install UPX
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: matrix.goos == 'linux'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
         run: |
-          sudo apt-get update && sudo apt-get install -y upx
-          cp tailscale-small-* tailscale-upx-temp
-          upx --lzma --best tailscale-upx-temp
-          mv tailscale-upx-temp tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
+          SUFFIX="${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
+          upx --lzma --best ./tailscale.combined
+          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}
 
       - name: Upload artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
           path: tailscale-small-*
 
   release:
-    needs: [check-tag, build]
+    needs: check-and-build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest non-pre Tailscale tag
+        id: get_tag
+        run: |
+          git clone https://github.com/tailscale/tailscale.git
+          cd tailscale
+          LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already built
+        id: check_tag
+        run: |
+          if git rev-parse ${{ steps.get_tag.outputs.latest_tag }} >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download all artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/download-artifact@v4
         with:
           path: binaries
           merge-multiple: true
 
       - name: Create Release
+        if: steps.check_tag.outputs.tag_exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.check-tag.outputs.latest_tag }}
-          name: Tailscale ${{ needs.check-tag.outputs.latest_tag }}
+          tag_name: ${{ steps.get_tag.outputs.latest_tag }}
+          name: Tailscale ${{ steps.get_tag.outputs.latest_tag }}
           body: |
-            Smaller Tailscale binaries.
-            - Non-compressed versions for all platforms
-            - UPX-compressed versions for Linux
+            This release contains two versions of the Tailscale binary for each platform:
+            - Non-compressed version
+            - UPX-compressed version (Linux only)
+
+            The UPX-compressed version is smaller but may trigger false positives in some security software.
           files: binaries/*
