@@ -1,19 +1,28 @@
-name: Build and Release Smaller Tailscale
+name: Unified Release Workflow
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
-  workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
-      - .github/workflows/build_small_tailscale.yml
+      - ".github/workflows/release.yml"
+      - "generate-tar.sh"
+      - "etc/*"
+      - "usr/bin/tailscale-enabler"
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *" # Every day at 00:00 UTC
+  workflow_dispatch:
 
 jobs:
-  check-and-build:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
+          # Linux
           - goos: linux
             goarch: amd64
           - goos: linux
@@ -28,22 +37,36 @@ jobs:
           - goos: linux
             goarch: arm
             goarm: "7"
+          - goos: linux
+            goarch: mips
+          - goos: linux
+            goarch: mipsle
+          - goos: linux
+            goarch: mips64
+          - goos: linux
+            goarch: mips64le
+          # macOS
           - goos: darwin
             goarch: amd64
           - goos: darwin
             goarch: arm64
+          # Windows
           - goos: windows
             goarch: amd64
           - goos: windows
             goarch: arm64
+          # BSDs
           - goos: freebsd
             goarch: amd64
           - goos: openbsd
             goarch: amd64
-
+    permissions:
+      contents: write
+      pull-requests: write
+      repository-projects: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
           fetch-depth: 0
 
@@ -62,63 +85,120 @@ jobs:
             echo "tag_exists=true" >> $GITHUB_OUTPUT
           else
             echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set Version Variables
+        run: |
+          cd tailscale
+          VERSION_SHORT=$(git describe --tags --abbrev=0)
+          VERSION_GIT_HASH=$(git rev-parse --short HEAD)
+          VERSION_LONG="${VERSION_SHORT}-t${VERSION_GIT_HASH}"
+          echo "VERSION_SHORT=${VERSION_SHORT}"
+          echo "VERSION_GIT_HASH=${VERSION_GIT_HASH}"
+          echo "VERSION_LONG=${VERSION_LONG}"
+
+      - name: Set up Go environment variables
+        run: |
+          echo "GOOS=${{ matrix.goos }}" >> $GITHUB_ENV
+          echo "GOARCH=${{ matrix.goarch }}" >> $GITHUB_ENV
+          if [ -n "${{ matrix.goarm }}" ]; then
+            echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV
           fi
 
       - name: Set up Go
         if: steps.check_tag.outputs.tag_exists == 'false'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v2
         with:
-          go-version: '^1.22'
+          go-version: "^1.17"
 
       - name: Build smaller Tailscale binary
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        env:
-          GOARM: ${{ matrix.goarm }}
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         run: |
-          set -eux
+          set -eux  # Add debugging information
           cd tailscale
           git checkout ${{ steps.get_tag.outputs.latest_tag }}
-          # Run mkversion without cross-compile env, then build with it
-          eval $(CGO_ENABLED=0 go run ./cmd/mkversion)
-          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} ./build_dist.sh --extra-small ./cmd/tailscaled
-          EXT=""
-          [[ "${{ matrix.goos }}" == "windows" ]] && EXT=".exe"
-          cp tailscaled${EXT} ../tailscale.combined${EXT}
+          eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
+          go build -o tailscale.combined -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
+          cp tailscale.combined ../tailscale.combined
+          # Create the correct filename with goarm suffix if applicable
+          if [ -n "${{ matrix.goarm }}" ]; then
+            cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}
+          else
+            cp tailscale.combined ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          fi
 
-      - name: Create non-compressed binary
-        if: steps.check_tag.outputs.tag_exists == 'false'
+      - name: Build smaller Tailscale binary for Windows
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
         run: |
-          EXT=""
-          [[ "${{ matrix.goos }}" == "windows" ]] && EXT=".exe"
-          SUFFIX="${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
-          cp tailscale.combined${EXT} tailscale-small-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}${EXT}
+          set -eux  # Add debugging information
+          cd tailscale
+          git checkout ${{ steps.get_tag.outputs.latest_tag }}
+          eval $(CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go run ./cmd/mkversion)
+          go build -o tailscale.combined.exe -ldflags "-s -w" -tags "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion" ./cmd/tailscaled
+          cp tailscale.combined.exe ../tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
       - name: Install UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux' && matrix.goarch != 'loong64' && matrix.goarch != 'mips64' && matrix.goarch != 'mips64le'
         run: sudo apt-get update && sudo apt-get install -y upx
 
       - name: Compress with UPX
-        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux' && matrix.goarch != 'loong64' && matrix.goarch != 'mips64' && matrix.goarch != 'mips64le'
         run: |
-          SUFFIX="${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
-          upx --lzma --best ./tailscale.combined || true
-          if [ -f ./tailscale.combined ]; then
-            mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}
+          cp tailscale.combined tailscale.upx
+          upx --lzma --best ./tailscale.upx
+          # Create the correct filename with goarm suffix if applicable
+          if [ -n "${{ matrix.goarm }}" ]; then
+            mv tailscale.upx tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}
+          else
+            mv tailscale.upx tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          fi
+        continue-on-error: true
+
+      - name: Check UPX Compression
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        id: check_upx
+        run: |
+          if [ -n "${{ matrix.goarm }}" ]; then
+            UPX_FILE="tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ matrix.goarm }}-${{ steps.get_tag.outputs.latest_tag }}"
+          else
+            UPX_FILE="tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}"
+          fi
+          
+          if [ -f "$UPX_FILE" ]; then
+            echo "UPX_EXISTS=true" >> $GITHUB_ENV
+            echo "UPX_FILE=$UPX_FILE" >> $GITHUB_ENV
+          else
+            echo "UPX_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Upload artifacts
-        if: steps.check_tag.outputs.tag_exists == 'false'
+      - name: Upload Non-Windows Artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos != 'windows'
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}
-          path: tailscale-small-*
+          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+
+      - name: Upload UPX Artifacts
+        if: env.UPX_EXISTS == 'true' && steps.check_tag.outputs.tag_exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-small-upx-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm != '' && format('-{0}', matrix.goarm) || '' }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: ${{ env.UPX_FILE }}
+
+      - name: Upload Windows Artifacts
+        if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}
+          path: tailscale-small-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.get_tag.outputs.latest_tag }}.exe
 
   release:
-    needs: check-and-build
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        id: checkout_code
+        uses: actions/checkout@v2
         with:
           fetch-depth: 0
 
@@ -129,6 +209,15 @@ jobs:
           cd tailscale
           LATEST_TAG=$(git tag -l --sort=-v:refname | grep -v -E '(pre|rc)' | head -n 1)
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+      - name: Get data
+        id: data
+        run: |
+           echo "version=${{ steps.get_tag.outputs.latest_tag }}-$(git rev-parse --short HEAD)-autoupdate" >> $GITHUB_OUTPUT
+           echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+           echo "repolink=$(git remote-get-url origin | sed 's/\.git//g')" >> $GITHUB_OUTPUT
+
+      - name: Generate tar archive
+        run: ./generate-tar.sh ${{ steps.data.outputs.version }}
 
       - name: Check if tag already built
         id: check_tag
@@ -139,23 +228,132 @@ jobs:
             echo "tag_exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Download all artifacts
+      - name: Download Artifacts
         if: steps.check_tag.outputs.tag_exists == 'false'
         uses: actions/download-artifact@v4
         with:
-          path: binaries
-          merge-multiple: true
+          path: ./binaries
+        continue-on-error: true
 
-      - name: Create Release
-        if: steps.check_tag.outputs.tag_exists == 'false'
-        uses: softprops/action-gh-release@v2
+      # check if the tag already exists
+      - name: Check if tag already exists
+        id: check_tag_existing
+        run: |
+          if git rev-parse ${{ steps.data.outputs.version }} >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release Existing
+        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
+        id: create_release_existing
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.get_tag.outputs.latest_tag }}
-          name: Tailscale ${{ steps.get_tag.outputs.latest_tag }}
+          tag_name: ${{ steps.data.outputs.version }}
+          release_name: Tailscale ${{ steps.data.outputs.version }}
+          body: |
+            Auto Update
+          draft: false
+          prerelease: true
+
+      - name: Upload Release Assets
+        if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const fs = require('fs').promises;
+            const path = require('path');
+
+            const uploadAsset = async (releaseId, file) => {
+              console.log(`Uploading ${file}...`);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseId,
+                name: path.basename(file),
+                data: await fs.readFile(file)
+              });
+            };
+            const releaseId = ${{ steps.create_release.outputs.id  || steps.create_release_existing.outputs.id }};
+
+            const enablerPath = './openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz';
+            await uploadAsset(releaseId, enablerPath);
+
+      - name: Upload Release Assets
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            ./binaries/*/*
+            openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+          allowUpdates: "true"
+          tag: ${{ steps.get_tag.outputs.latest_tag }}
+          makeLatest: "true"
           body: |
             This release contains two versions of the Tailscale binary for each platform:
             - Non-compressed version
-            - UPX-compressed version (Linux only)
-
+            - UPX-compressed version
             The UPX-compressed version is smaller but may trigger false positives in some security software.
-          files: binaries/*
+
+            And, build for all the following platforms:
+            - Linux (amd64, arm64, 386, loong64, arm5, arm7)
+            - macOS (amd64)
+            - FreeBSD (amd64)
+            - OpenBSD (amd64)
+            - Windows (amd64, arm64)
+            - mips (mips, mipsle, mips64, mips64le)
+
+            Some of the binaries are compressed with UPX, while the 
+            - Windows
+            - mips64
+            - mips64le
+            - loong64
+            - freebsd
+            - openbsd
+            ones are not compressed as UPX doesn't support them.
+
+            The binaries are built from the latest non-pre Tailscale tag using the official build script with the extra-small flag, Refer to the [Tailscale GitHub repository](https://github.com/tailscale/tailscale)
+
+            They're much smaller as I've used the techniques from the [Tailscale blog post](https://tailscale.com/kb/1207/small-tailscale) to make them smaller.
+
+            It also includes the tar archive for easy install.
+
+            To install: `tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz`.
+
+            Then run `tailscale-enabler`.
+
+            If you want, you can also set cron jobs to update the Tailscale binary automatically.
+
+            In a pasteable format, the commands are:
+
+            ```
+            # Download the enabler script
+            wget ${{ steps.data.outputs.repolink }}/releases/download/${{ steps.get_tag.outputs.latest_tag }}/openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+            tar x -zvC / -f openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+            rm openwrt-tailscale-enabler-${{ steps.data.outputs.version }}.tgz
+
+            # Download the latest Tailscale binary
+            /usr/bin/tailscale-enabler
+
+            # Install the required packages
+            opkg update
+            opkg install libustream-openssl ca-bundle kmod-tun
+
+            # Start the Tailscale service
+            /etc/init.d/tailscale start
+
+            # Start the Tailscale client. You may need to authenticate it using the provided link.
+            tailscale up --accept-dns=false
+
+            # Enable Tailscale to start on boot
+            /etc/init.d/tailscale enable
+
+            # to Auto Update Tailscale binary every Sunday at 00:00
+            { crontab -l; echo "0 0 * * 0 /usr/bin/tailscale-enabler"; } | crontab - 
+            ```
+
+            Further details can be found in the repo readme.
