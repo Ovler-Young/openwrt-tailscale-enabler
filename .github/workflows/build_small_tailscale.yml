@@ -101,8 +101,10 @@ jobs:
         if: steps.check_tag.outputs.tag_exists == 'false' && matrix.goos == 'linux'
         run: |
           SUFFIX="${{ matrix.goarch }}${{ matrix.goarm && format('-v{0}', matrix.goarm) || '' }}"
-          upx --lzma --best ./tailscale.combined
-          mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}
+          upx --lzma --best ./tailscale.combined || true
+          if [ -f ./tailscale.combined ]; then
+            mv tailscale.combined tailscale-small-upx-${{ matrix.goos }}-${SUFFIX}-${{ steps.get_tag.outputs.latest_tag }}
+          fi
 
       - name: Upload artifacts
         if: steps.check_tag.outputs.tag_exists == 'false'
