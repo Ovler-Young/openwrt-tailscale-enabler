@@ -245,6 +245,16 @@ jobs:
             echo "tag_exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Update README version and push
+        if: steps.check_tag.outputs.tag_exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sed -i "s/<!-- LATEST_VERSION:.* -->/<!-- LATEST_VERSION:${{ steps.get_tag.outputs.latest_tag }} -->/" README.md
+          git add README.md
+          git commit -m "chore: update version to ${{ steps.get_tag.outputs.latest_tag }}" || echo "No changes to commit"
+          git push
+
       - name: Create Release Existing
         if: steps.check_tag.outputs.tag_exists == 'true' && github.event_name == 'push'
         id: create_release_existing
