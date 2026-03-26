@@ -1,6 +1,6 @@
 # Tailscale on OpenWRT
 
-<!-- LATEST_VERSION:v1.96.3 -->
+<!-- LATEST_VERSION:v1.96.4 -->
 
 1. Extract the contents of root to your filesystem root:
 ```
